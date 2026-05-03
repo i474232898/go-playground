@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	// "sync"
 	"time"
 )
 
@@ -24,7 +23,8 @@ func main() {
 	ctx := context.Background()
 	
 	start := time.Now()
-	res, err := process(ctx, names)
+	
+	res, err := process(ctx, names, realFetcher{})
 	if err != nil {
 		p("an error occured:", err.Error())
 	}
@@ -37,11 +37,21 @@ func fetch(_ context.Context, user User) (string, error) {
 	return user.name, nil
 }
 
-func process(ctx context.Context, users []User) (map[string]int64, error) {
+type Fetcher interface {
+	fetch(ctx context.Context, user User) (string, error)
+}
+
+type realFetcher struct{}
+
+func (realFetcher) fetch(ctx context.Context, user User) (string, error) {
+	return fetch(ctx, user)
+}
+
+func process(ctx context.Context, users []User, f Fetcher) (map[string]int64, error) {
 	names := make(map[string]int64, 0)
 	
 	for _, u := range users {
-		name, err := fetch(ctx, u)
+		name, err := f.fetch(ctx, u)
 		if err != nil {}
 		
 		names[name] = names[name] + 1

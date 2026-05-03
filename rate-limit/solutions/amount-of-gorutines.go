@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
-
 	// "sync"
 	"time"
 )
@@ -27,24 +25,27 @@ func (c client) SendRequest(ctx context.Context, request Request) error {
 	return nil
 }
 
-// limit camount of connections √
-// limit amount of gorutines 
+// limit amount of gorutines
 // limit rps
-
-var maxConnections = 10
-
-func (c client) WithLimiter(ctx context.Context, reqs chan Request) {
-	wg := sync.WaitGroup{}
-	wg.Add(maxConnections)
-	for range maxConnections {
-		go func() {
-			defer wg.Done()
-			for r := range reqs {
-				c.SendRequest(ctx, r)
-			}
+// Using the semaphore channel for both limiting and waiting
+var maxGorutines = 10
+func (c client) WithLimiter(ctx context.Context, reqs []Request) {
+	tokens := make(chan struct{}, maxGorutines)
+	for range maxGorutines{
+		tokens<-struct{}{}
+	}
+	for _, r := range reqs{
+		<-tokens
+		go func(){
+			defer func(){
+				tokens<-struct{}{}
+			}()
+			c.SendRequest(ctx, r)
 		}()
 	}
-	wg.Wait()
+	for range maxGorutines{
+		<-tokens
+	}
 }
 
 func main() {
@@ -55,17 +56,5 @@ func main() {
 	for i := 0; i < rq; i++ {
 		requests[i] = Request{Payload: strconv.Itoa(i)}
 	}
-	c.WithLimiter(ctx, generate(requests))
-}
-
-func generate(req []Request) chan Request {
-	out := make(chan Request)
-	go func() {
-		for _, r := range req {
-			out <- r
-		}
-		close(out)
-	}()
-
-	return out
+	c.WithLimiter(ctx, requests)
 }
